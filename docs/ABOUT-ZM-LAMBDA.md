@@ -18,7 +18,7 @@
     - (+)Postive End of Li-Ion Battery
     - 400kΩ resistor
   - Middle:
-    - Connected to Pin `P0_04` / `AIN2`
+    - Connected to Pin `P1_00` 
   - Bottom:
     - 1MΩ resistor
     - GND
@@ -26,39 +26,33 @@
 
 ### Inputs
 #### Keys
-Direct Pin Matrix Configuration (Columns are left to right, Rows are top to bottom)
-- **Row 0:**
-  - Column 0: `P0_13` or `0,0`
-  - Column 1: `P0_15` or `0,1`
-  - Column 2: `P0_17` or `0,2`
+Column to Row (Diodes pointing from Column to Row)
+- **Columns:**
+  - Column 3: `P1_09` (SW1 Net on Schematic)
+  - Column 2: `P0_12` (SW2 Net on Schematic)
+  - Column 1: `P0_11` (SW3 Net on Schematic)
+  - Column 0: `P0_15` (SW4 Net on Schematic)
 
-- **Row 1:**
-  - Column 0: `P0_24` or `1,0`
-  - Column 1: `P0_22` or `1,1`
-  - Column 2: `P0_20` or `1,2`
-
-- **Row 2:**
-  - Column 0: `P1_06` or `2,0`
-  - Column 1: `P1_04`   or `2,1`
-  - Column 2: `P1_00`   or `2,2`
-
-- **Row 3:**
-  - Column 0: `P0_11` or `3,0` (also shared with Encoder #1 Click/Press)
+- **Rows:**
+  - Row 0: `P0_17`
+  - Row 1: `P0_20`
+  - Row 2: `P0_22`
+  - Row 3: `P0_24`
 
 
 #### Encoder #1
 - Pin A
-  - `P1_09`
+  - `P0_08`
 - Pin B
-  - `P0_12`
+  - `P0_06`
 - Click/Press
-  - `P0_11`
+  - `P0_04`
 
 
 ### SK6812MINI-E / WS2812B 
 #### Info
 - Number of LEDs:
-  - 9
+  - 14
 - First is top Left
 - Goes order from left to right, top to bottom
 - Last is bottom Right
@@ -70,7 +64,7 @@ First SK6812MINI-E / WS2812B is connected to Pin `P0_26`
 #### Power Control
 Non Inverting Control PMOS High Side Switch Circuit
 
-- Pin `P0_25`
+- Pin `P0_29`
   - Where
     - High -> LED Power is on
     - Low -> LED Power is off

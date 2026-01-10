@@ -32,10 +32,10 @@ pub(crate) const NUM_ENCODER: usize = 1;
 pub const fn get_default_keymap() -> [[[KeyAction; COL]; ROW]; NUM_LAYER] {
     [
         layer!([
-            [k!(A),                    k!(B),                      k!(C),                  a!(No)],
-            [k!(D),                    k!(E),                      k!(F),                  a!(No)],
-            [k!(G),                    k!(H),                      k!(I),                  a!(No)],
-            [lt!(1, AudioMute),        a!(No),                     a!(No),                 a!(No)]
+            [lt!(1, AudioMute),        k!(A),                      k!(B),                  k!(C)],
+            [k!(D),                    k!(E),                      k!(F),                  k!(G)],
+            [k!(H),                    k!(I),                      k!(J),                  k!(K)],
+            [k!(L),                    k!(M),                      k!(N),                  k!(O)]
         ]),
         layer!([
             [kc!(BLE1),                kc!(BLE2),                  kc!(BLE3),                 a!(No)],

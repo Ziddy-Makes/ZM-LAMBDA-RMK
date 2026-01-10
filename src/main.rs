@@ -19,7 +19,7 @@ use embassy_nrf::usb::Driver;
 use embassy_nrf::usb::vbus_detect::HardwareVbusDetect;
 use embassy_nrf::{Peri, bind_interrupts, pac, peripherals, rng, spim, usb};
 
-use keymap::{COL, ROW, SIZE};
+use keymap::{COL, ROW};
 use led::{StartupAnimator, StatusLedController};
 use nrf_mpsl::Flash;
 use nrf_sdc::mpsl::MultiprotocolServiceLayer;
@@ -75,7 +75,7 @@ const L2CAP_MTU: usize = 251;
 
 const UNLOCK_KEYS: &[(u8, u8)] = &[(0, 0), (0, 1)];
 
-const NUM_LEDS: usize = 9;
+const NUM_LEDS: usize = 15;
 
 fn build_sdc<'d, const N: usize>(
     p: nrf_sdc::Peripherals<'d>,
@@ -170,7 +170,7 @@ async fn main(spawner: Spawner) {
         vid: 0x7c4b,
         pid: 0x364a,
         manufacturer: "Ziddy Makes",
-        product_name: "ZM9K-BLE-RMK-C",
+        product_name: "ZM-LAMBDA-BLE-RMK-C",
         serial_number: "vial:f64c2b3c:000001",
     };
     let vial_config = VialConfig::new(VIAL_KEYBOARD_ID, VIAL_KEYBOARD_DEF, UNLOCK_KEYS);
@@ -179,8 +179,8 @@ async fn main(spawner: Spawner) {
     let storage_config = StorageConfig {
         start_addr: 0xA0000, // FIXME: use 0x70000 after we can build without softdevice controller
         num_sectors: 12,     // Sectors are 4KB each on nRF52840 -- 24 sectors = 96KB
-        clear_storage: false,
-        clear_layout: false,
+        clear_storage: true,
+        clear_layout: true,
     };
     let rmk_config = RmkConfig {
         device_config: keyboard_device_config,
@@ -214,28 +214,35 @@ async fn main(spawner: Spawner) {
     .await;
 
     // Initialize the matrix and keyboard
+    // Column to Row (Diodes pointing from Column to Row)
+    // Columns:
+    //   Column 3: P1_09 (SW1 Net on Schematic)
+    //   Column 2: P0_12 (SW2 Net on Schematic)
+    //   Column 1: P0_11 (SW3 Net on Schematic)
+    //   Column 0: P0_15 (SW4 Net on Schematic)
+    // Rows:
+    //   Row 0: P0_17
+    //   Row 1: P0_20
+    //   Row 2: P0_22
+    //   Row 3: P0_24
     #[rustfmt::skip]
-    let direct_pins = config_matrix_pins_nrf! {
+    let (input_pins, output_pins) = config_matrix_pins_nrf! {
         peripherals: p,
-        direct_pins: [
-            [P0_13, P0_15, P0_17, _],
-            [P0_24, P0_22, P0_20, _],
-            [P1_06, P1_04, P1_00, _],
-            [P0_11,     _,     _, _],
-        ]
+        input: [P0_17, P0_20, P0_22, P0_24], // Rows
+        output: [P0_15, P0_11, P0_12, P1_09] // Columns
     };
 
     let debouncer = DefaultDebouncer::new();
-    let mut matrix = ::rmk::direct_pin::DirectPinMatrix::<_, _, ROW, COL, SIZE>::new(
-        direct_pins,
-        debouncer,
-        true,
-    );
+    // Matrix type: <Input, Output, Debouncer, ROW, COL, COL2ROW>
+    // COL2ROW = true means column-to-row (diodes pointing from column to row)
+    let mut matrix =
+        ::rmk::matrix::Matrix::<_, _, _, ROW, COL, true>::new(input_pins, output_pins, debouncer);
     let mut keyboard = Keyboard::new(&keymap);
 
     // Initialize the encoder
-    let pin_a = Input::new(p.P1_09, embassy_nrf::gpio::Pull::Up);
-    let pin_b = Input::new(p.P0_12, embassy_nrf::gpio::Pull::Up);
+    // Encoder Pin A: P0_08, Pin B: P0_06
+    let pin_a = Input::new(p.P0_08, embassy_nrf::gpio::Pull::Up);
+    let pin_b = Input::new(p.P0_06, embassy_nrf::gpio::Pull::Up);
     let mut encoder = RotaryEncoder::with_resolution(pin_a, pin_b, 4, false, 0);
 
     let mut adc_device = NrfAdc::new(
@@ -246,7 +253,7 @@ async fn main(spawner: Spawner) {
     );
     let mut batt_proc = BatteryProcessor::new(1000, 1400, &keymap);
 
-    let mosfet_sk_pwr_ctrl = Output::new(p.P0_25, Level::Low, OutputDrive::Standard);
+    let mosfet_sk_pwr_ctrl = Output::new(p.P0_29, Level::Low, OutputDrive::Standard);
 
     let mut spim_config = spim::Config::default();
     spim_config.frequency = spim::Frequency::M4;
