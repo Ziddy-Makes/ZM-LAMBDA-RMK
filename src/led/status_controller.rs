@@ -40,6 +40,7 @@ impl<'d, const N: usize> StatusLedController<'d, N> {
 
     fn blink_ble_profile_led_blue(&mut self) {
         self.power_pin.set_high();
+        info!("Blinking blue LED: {}", self.current_ble_profile);
         let mut data = [RGB8 { r: 0, g: 0, b: 0 }; N];
         data[self.current_ble_profile as usize] = RGB8 { r: 0, g: 0, b: 70 };
         let _ = self.ws2812.write(data.iter().cloned());
@@ -65,14 +66,15 @@ impl<'d, const N: usize> StatusLedController<'d, N> {
         self.power_pin.set_high();
 
         // Calculate how many LEDs to light up based on battery percentage
-        // Map 0-100% to 0-9 LEDs (with at least 1 LED if battery > 0%)
+        // Map 0-100% to 0-N LEDs (with at least 1 LED if battery > 0%)
         let num_leds = if self.battery_percentage == 0 {
-            0
+            //0
+            N
         } else if self.battery_percentage >= 89 {
-            9 // 89-100% = all 9 LEDs
+            N // 89-100% = all N LEDs
         } else {
-            // 1-88% maps to 1-8 LEDs: divide by 11 to get roughly equal bands
-            ((self.battery_percentage - 1) / 11) + 1
+            // 1-88% maps to 1-(N-1) LEDs: scale proportionally
+            ((self.battery_percentage as usize - 1) * (N - 1) / 88) + 1
         };
 
         // Choose color based on battery level: red if under 30%, green otherwise
@@ -84,7 +86,7 @@ impl<'d, const N: usize> StatusLedController<'d, N> {
 
         // Create LED array and light up the first num_leds
         let mut data = [RGB8::default(); N];
-        for i in 0..num_leds as usize {
+        for i in 0..num_leds {
             data[i] = led_color;
         }
 

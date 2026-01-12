@@ -1,5 +1,5 @@
 [package]
-name = "ZM9K-BLE-RMK"
+name = "ZM-LAMBDA-RMK"
 version = "0.2.0"
 authors = ["Alex Zidros"]
 description = "Keyboard firmware written in Rust"
@@ -70,7 +70,7 @@ json = "0.12"
 const-gen = "1.6"
 
 [[bin]]
-name = "ZM9K-BLE-RMK"
+name = "ZM-LAMBDA-RMK"
 test = false
 bench = false
 

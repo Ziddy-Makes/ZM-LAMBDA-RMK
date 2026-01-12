@@ -75,7 +75,7 @@ const L2CAP_MTU: usize = 251;
 
 const UNLOCK_KEYS: &[(u8, u8)] = &[(0, 0), (0, 1)];
 
-const NUM_LEDS: usize = 15;
+const NUM_LEDS: usize = 14;
 
 fn build_sdc<'d, const N: usize>(
     p: nrf_sdc::Peripherals<'d>,
@@ -179,8 +179,8 @@ async fn main(spawner: Spawner) {
     let storage_config = StorageConfig {
         start_addr: 0xA0000, // FIXME: use 0x70000 after we can build without softdevice controller
         num_sectors: 12,     // Sectors are 4KB each on nRF52840 -- 24 sectors = 96KB
-        clear_storage: true,
-        clear_layout: true,
+        clear_storage: false,
+        clear_layout: false,
     };
     let rmk_config = RmkConfig {
         device_config: keyboard_device_config,
@@ -269,7 +269,8 @@ async fn main(spawner: Spawner) {
     startup_animator.bootup_animation().await;
     let (ws2812, mosfet_sk_pwr_ctrl) = startup_animator.take();
 
-    let mut status_led = StatusLedController::<NUM_LEDS>::new(ws2812, mosfet_sk_pwr_ctrl);
+    let mut status_led: StatusLedController<'_, NUM_LEDS> =
+        StatusLedController::<NUM_LEDS>::new(ws2812, mosfet_sk_pwr_ctrl);
 
     join4(
         run_devices! (

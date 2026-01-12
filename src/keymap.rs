@@ -32,16 +32,16 @@ pub(crate) const NUM_ENCODER: usize = 1;
 pub const fn get_default_keymap() -> [[[KeyAction; COL]; ROW]; NUM_LAYER] {
     [
         layer!([
-            [lt!(1, AudioMute),        k!(A),                      k!(B),                  k!(C)],
+            [k!(A),                    k!(B),                      k!(C),                  lt!(1, AudioMute)],
             [k!(D),                    k!(E),                      k!(F),                  k!(G)],
             [k!(H),                    k!(I),                      k!(J),                  k!(K)],
-            [k!(L),                    k!(M),                      k!(N),                  k!(O)]
+            [k!(L),                    a!(No),                     k!(N),                  k!(O)]
         ]),
         layer!([
-            [kc!(BLE1),                kc!(BLE2),                  kc!(BLE3),                 a!(No)],
-            [td!(0),                   a!(No),                     kc!(BATT_CHECK),           a!(No)],
-            [td!(1),                   a!(No),                     kc!(USB_BLE_SW),           a!(No)],
-            [a!(Transparent),          a!(No),                     a!(No),                    a!(No)]
+            [kc!(BLE1),                kc!(BLE2),                  kc!(BLE3),                 a!(Transparent)],
+            [td!(0),                   a!(No),                     a!(No),                    kc!(BATT_CHECK)],
+            [td!(1),                   a!(No),                     a!(No),                    kc!(USB_BLE_SW)],
+            [a!(No),                   a!(No),                     a!(No),                    a!(No)]
         ]),
         layer!([
             [k!(J),                    k!(K),                      k!(L),                  a!(No)],
@@ -117,7 +117,6 @@ pub fn configure_tapdance(behavior_config: &mut rmk::config::BehaviorConfig) {
     let mut td1 = Morse::default();
     td1.profile = MorseProfile::new(None, Some(MorseMode::Normal), Some(200), Some(200));
     td1.put(HOLD, Action::Key(KeyCode::Bootloader));
-
 
     //////////////////////////////////////////////////////////////////////////////
 
