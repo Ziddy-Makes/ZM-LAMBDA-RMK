@@ -168,9 +168,9 @@ async fn main(spawner: Spawner) {
     // Keyboard config
     let keyboard_device_config = DeviceConfig {
         vid: 0x7c4b,
-        pid: 0x364a,
+        pid: 0x364c,
         manufacturer: "Ziddy Makes",
-        product_name: "ZM-LAMBDA-BLE-RMK-C",
+        product_name: "ZM-LAMBDA-RMK-C",
         serial_number: "vial:f64c2b3c:000001",
     };
     let vial_config = VialConfig::new(VIAL_KEYBOARD_ID, VIAL_KEYBOARD_DEF, UNLOCK_KEYS);
@@ -179,8 +179,8 @@ async fn main(spawner: Spawner) {
     let storage_config = StorageConfig {
         start_addr: 0xA0000, // FIXME: use 0x70000 after we can build without softdevice controller
         num_sectors: 12,     // Sectors are 4KB each on nRF52840 -- 24 sectors = 96KB
-        clear_storage: true,
-        clear_layout: true,
+        clear_storage: false,
+        clear_layout: false,
     };
     let rmk_config = RmkConfig {
         device_config: keyboard_device_config,
