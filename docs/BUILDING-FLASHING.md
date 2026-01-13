@@ -24,6 +24,11 @@ cargo make uf2 --release
 cargo build --release && cargo make uf2 --release
 ```
 
+Build & Flash/Run (Debugger Connected)
+```bash
+cargo build && cargo run
+```
+
 > [!question] **TIP:** Assign `bootloader` keycode to a key, so you don't have keep double tapping reset like a madman
 > 
 

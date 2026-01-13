@@ -179,8 +179,8 @@ async fn main(spawner: Spawner) {
     let storage_config = StorageConfig {
         start_addr: 0xA0000, // FIXME: use 0x70000 after we can build without softdevice controller
         num_sectors: 12,     // Sectors are 4KB each on nRF52840 -- 24 sectors = 96KB
-        clear_storage: false,
-        clear_layout: false,
+        clear_storage: true,
+        clear_layout: true,
     };
     let rmk_config = RmkConfig {
         device_config: keyboard_device_config,

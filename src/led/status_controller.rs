@@ -40,19 +40,48 @@ impl<'d, const N: usize> StatusLedController<'d, N> {
 
     fn blink_ble_profile_led_blue(&mut self) {
         self.power_pin.set_high();
-        info!("Blinking blue LED: {}", self.current_ble_profile);
+        info!(
+            "Blinking blue LED: {} (max: {})",
+            self.current_ble_profile, N
+        );
         let mut data = [RGB8 { r: 0, g: 0, b: 0 }; N];
-        data[self.current_ble_profile as usize] = RGB8 { r: 0, g: 0, b: 70 };
-        let _ = self.ws2812.write(data.iter().cloned());
-        self.leds_on = true;
+
+        // Bounds check to prevent panic
+        let profile_index = (self.current_ble_profile as usize).min(N - 1);
+        data[profile_index] = RGB8 { r: 0, g: 0, b: 70 };
+
+        match self.ws2812.write(data.iter().cloned()) {
+            Ok(_) => {
+                info!("Successfully wrote LED data");
+                self.leds_on = true;
+            }
+            Err(_) => {
+                info!("Failed to write LED data");
+            }
+        }
     }
 
     fn blink_ble_profile_led_green(&mut self) {
         self.power_pin.set_high();
+        info!(
+            "Blinking green LED: {} (max: {})",
+            self.current_ble_profile, N
+        );
         let mut data = [RGB8 { r: 0, g: 0, b: 0 }; N];
-        data[self.current_ble_profile as usize] = RGB8 { r: 0, g: 70, b: 0 };
-        let _ = self.ws2812.write(data.iter().cloned());
-        self.leds_on = true;
+
+        // Bounds check to prevent panic
+        let profile_index = (self.current_ble_profile as usize).min(N - 1);
+        data[profile_index] = RGB8 { r: 0, g: 70, b: 0 };
+
+        match self.ws2812.write(data.iter().cloned()) {
+            Ok(_) => {
+                info!("Successfully wrote LED data");
+                self.leds_on = true;
+            }
+            Err(_) => {
+                info!("Failed to write LED data");
+            }
+        }
     }
 
     fn clear_all_leds(&mut self) {
@@ -69,7 +98,7 @@ impl<'d, const N: usize> StatusLedController<'d, N> {
         // Map 0-100% to 0-N LEDs (with at least 1 LED if battery > 0%)
         let num_leds = if self.battery_percentage == 0 {
             //0
-            N
+            1
         } else if self.battery_percentage >= 89 {
             N // 89-100% = all N LEDs
         } else {
@@ -111,6 +140,22 @@ impl<'d, const N: usize> Controller for StatusLedController<'d, N> {
 
     async fn process_event(&mut self, event: Self::Event) {
         match event {
+            ControllerEvent::ConnectionType(conn_type) => {
+                info!("ConnectionType changed: {}", conn_type);
+                // 0 = USB, 1 = BLE
+                if conn_type == 1 {
+                    // BLE mode - start advertising indicator
+                    info!("BLE mode activated - starting advertising indicator");
+                    self.should_blink = true;
+                } else {
+                    // USB mode - turn off BLE indicators
+                    info!("USB mode - stopping BLE indicators");
+                    self.should_blink = false;
+                    if !self.is_showing_battery {
+                        self.clear_all_leds();
+                    }
+                }
+            }
             ControllerEvent::BleState(profile, state) => {
                 match state {
                     BleState::Advertising => {
@@ -148,6 +193,10 @@ impl<'d, const N: usize> Controller for StatusLedController<'d, N> {
                 self.battery_percentage = percentage;
                 info!("Battery updated: {}%", percentage);
             }
+            ControllerEvent::BleProfile(profile) => {
+                info!("BLE Profile changed to: {}", profile);
+                self.current_ble_profile = profile;
+            }
             ControllerEvent::Key(_keyboard_event, key_action) => {
                 // Check if it's User7 key (BAT_CHK in Vial)
                 if let KeyAction::Single(Action::Key(KeyCode::User7)) = key_action {
@@ -184,6 +233,10 @@ impl<'d, const N: usize> PollingController for StatusLedController<'d, N> {
     async fn update(&mut self) {
         // Only blink for BLE if we're not currently showing battery level
         if self.should_blink && !self.is_showing_battery {
+            info!(
+                "Update: should_blink={}, leds_on={}, profile={}",
+                self.should_blink, self.leds_on, self.current_ble_profile
+            );
             if self.leds_on {
                 self.clear_all_leds();
             } else {
