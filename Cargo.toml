@@ -10,7 +10,7 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-rmk = { git = "https://github.com/HaoboGu/rmk", rev = "f0872fa", features = [
+rmk = { git = "https://github.com/HaoboGu/rmk", rev = "ca38784", features = [
     "async_matrix",
     "nrf52840_ble",
     "adafruit_bl",

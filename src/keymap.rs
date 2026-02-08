@@ -1,7 +1,6 @@
 use rmk::keyboard_macros::{define_macro_sequences, to_macro_sequence};
 use rmk::morse::Morse;
-use rmk::types::action::{Action, EncoderAction, KeyAction, MorseMode, MorseProfile};
-use rmk::types::keycode::KeyCode;
+use rmk::types::action::{Action, EncoderAction, KeyAction, KeyboardAction, MorseMode, MorseProfile};
 use rmk::types::modifier::ModifierCombination;
 use rmk::{a, encoder, k, layer, lt, td};
 
@@ -15,12 +14,13 @@ const _CTRL_SHIFT_GUI: ModifierCombination = ModifierCombination::new()
     .with_left_shift(true)
     .with_left_gui(true);
 
-const BLE1: KeyCode = KeyCode::User0;
-const BLE2: KeyCode = KeyCode::User1;
-const BLE3: KeyCode = KeyCode::User2;
-const BLE_CLR: KeyCode = KeyCode::User5;
-const USB_BLE_SW: KeyCode = KeyCode::User6;
-const BATT_CHECK: KeyCode = KeyCode::User7;
+// BLE profile actions - User(0-2) for BLE1-3, User(5) for clear, User(6) for USB/BLE switch, User(7) for battery check
+const BLE1: Action = Action::User(0);
+const BLE2: Action = Action::User(1);
+const BLE3: Action = Action::User(2);
+const BLE_CLR: Action = Action::User(5);
+const USB_BLE_SW: Action = Action::User(6);
+const BATT_CHECK: Action = Action::User(7);
 
 pub(crate) const COL: usize = 4;
 pub(crate) const ROW: usize = 4;
@@ -38,9 +38,9 @@ pub const fn get_default_keymap() -> [[[KeyAction; COL]; ROW]; NUM_LAYER] {
             [k!(L),                    a!(No),                     k!(N),                  k!(O)]
         ]),
         layer!([
-            [kc!(BLE1),                kc!(BLE2),                  kc!(BLE3),                 a!(Transparent)],
-            [td!(0),                   a!(No),                     a!(No),                    kc!(BATT_CHECK)],
-            [td!(1),                   a!(No),                     a!(No),                    kc!(USB_BLE_SW)],
+            [KeyAction::Single(BLE1),  KeyAction::Single(BLE2),    KeyAction::Single(BLE3),   a!(Transparent)],
+            [td!(0),                   a!(No),                     a!(No),                    KeyAction::Single(BATT_CHECK)],
+            [td!(1),                   a!(No),                     a!(No),                    KeyAction::Single(USB_BLE_SW)],
             [a!(No),                   a!(No),                     a!(No),                    a!(No)]
         ]),
         layer!([
@@ -99,9 +99,8 @@ pub const fn get_default_encoder_map() -> [[EncoderAction; NUM_ENCODER]; NUM_LAY
 /// This function sets up tapdance configurations that can be referenced in the keymap using td!(index)
 pub fn configure_tapdance(behavior_config: &mut rmk::config::BehaviorConfig) {
     use rmk::morse::{HOLD, TAP};
-    use rmk::types::keycode::KeyCode;
 
-    // Tapdance 0
+    // Tapdance 0 - Hold for BLE clear
     let mut td0 = Morse::default();
     td0.profile = MorseProfile::new(
         None,                    // Use default unilateral_tap
@@ -109,22 +108,22 @@ pub fn configure_tapdance(behavior_config: &mut rmk::config::BehaviorConfig) {
         Some(200),               // 200ms hold timeout
         Some(200),               // 200ms gap timeout
     );
-    td0.put(HOLD, Action::Key(BLE_CLR));
+    td0.put(HOLD, BLE_CLR);
 
     //////////////////////////////////////////////////////////////////////////////
 
-    // Tapdance 1
+    // Tapdance 1 - Hold for bootloader
     let mut td1 = Morse::default();
     td1.profile = MorseProfile::new(None, Some(MorseMode::Normal), Some(200), Some(200));
-    td1.put(HOLD, Action::Key(KeyCode::Bootloader));
+    td1.put(HOLD, Action::KeyboardControl(KeyboardAction::Bootloader));
 
     //////////////////////////////////////////////////////////////////////////////
 
-    // Tapdance 2
+    // Tapdance 2 - Tap for BLE3, Hold for BLE clear
     let mut td2 = Morse::default();
     td2.profile = MorseProfile::new(None, Some(MorseMode::Normal), Some(200), Some(200));
-    td2.put(TAP, Action::Key(KeyCode::User2));
-    td2.put(HOLD, Action::Key(KeyCode::User5));
+    td2.put(TAP, BLE3);  // User(2) = BLE3
+    td2.put(HOLD, BLE_CLR);  // User(5) = BLE_CLR
 
     //////////////////////////////////////////////////////////////////////////////
 

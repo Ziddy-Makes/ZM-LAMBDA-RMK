@@ -1,20 +1,20 @@
-use defmt::{info, unwrap};
+use defmt::info;
 use embassy_nrf::gpio::Output;
 use embassy_nrf::spim::Spim;
 use rmk::ble::BleState;
-use rmk::channel::CONTROLLER_CHANNEL;
-use rmk::channel::ControllerSub;
-use rmk::controller::{Controller, PollingController};
-use rmk::event::ControllerEvent;
-use rmk::types::action::{Action, KeyAction};
-use rmk::types::keycode::KeyCode;
+use rmk::event::{
+    BatteryStateEvent, BleProfileChangeEvent, BleStateChangeEvent, ConnectionChangeEvent,
+    ConnectionType, KeyEvent,
+};
+use rmk::macros::controller;
+use rmk::types::action::Action;
 use smart_leds::{RGB8, SmartLedsWrite};
 use ws2812_spi::Ws2812;
 
+#[controller(subscribe = [ConnectionChangeEvent, BleStateChangeEvent, BatteryStateEvent, BleProfileChangeEvent, KeyEvent], poll_interval = 700)]
 pub struct StatusLedController<'d, const N: usize> {
     ws2812: Ws2812<Spim<'d>>,
     power_pin: Output<'d>,
-    sub: ControllerSub,
     should_blink: bool,
     leds_on: bool,
     current_ble_profile: u8,
@@ -28,8 +28,7 @@ impl<'d, const N: usize> StatusLedController<'d, N> {
         Self {
             ws2812,
             power_pin,
-            sub: unwrap!(CONTROLLER_CHANNEL.subscriber()),
-            should_blink: false,
+            should_blink: true, // Start true - we're advertising on boot, event may be missed due to race
             leds_on: false,
             current_ble_profile: 0,
             battery_percentage: 100,
@@ -97,7 +96,6 @@ impl<'d, const N: usize> StatusLedController<'d, N> {
         // Calculate how many LEDs to light up based on battery percentage
         // Map 0-100% to 0-N LEDs (with at least 1 LED if battery > 0%)
         let num_leds = if self.battery_percentage == 0 {
-            //0
             1
         } else if self.battery_percentage >= 89 {
             N // 89-100% = all N LEDs
@@ -133,114 +131,121 @@ impl<'d, const N: usize> StatusLedController<'d, N> {
             }
         );
     }
-}
 
-impl<'d, const N: usize> Controller for StatusLedController<'d, N> {
-    type Event = ControllerEvent;
+    // Event handlers for #[controller] macro
 
-    async fn process_event(&mut self, event: Self::Event) {
-        match event {
-            ControllerEvent::ConnectionType(conn_type) => {
-                info!("ConnectionType changed: {}", conn_type);
-                // 0 = USB, 1 = BLE
-                if conn_type == 1 {
-                    // BLE mode - start advertising indicator
-                    info!("BLE mode activated - starting advertising indicator");
-                    self.should_blink = true;
-                } else {
-                    // USB mode - turn off BLE indicators
-                    info!("USB mode - stopping BLE indicators");
-                    self.should_blink = false;
-                    if !self.is_showing_battery {
-                        self.clear_all_leds();
-                    }
+    async fn on_connection_change_event(&mut self, event: ConnectionChangeEvent) {
+        info!("ConnectionType changed: {:?}", event.connection_type);
+        match event.connection_type {
+            ConnectionType::Ble => {
+                // BLE mode - start advertising indicator
+                info!("BLE mode activated - starting advertising indicator");
+                self.should_blink = true;
+            }
+            ConnectionType::Usb => {
+                // USB mode - turn off BLE indicators
+                info!("USB mode - stopping BLE indicators");
+                self.should_blink = false;
+                if !self.is_showing_battery {
+                    self.clear_all_leds();
                 }
-            }
-            ControllerEvent::BleState(profile, state) => {
-                match state {
-                    BleState::Advertising => {
-                        // Start blinking blue when advertising
-                        info!("Advertising - Custom Controller - Profile: {}", profile);
-                        self.current_ble_profile = profile;
-                        self.should_blink = true;
-                    }
-                    BleState::Connected => {
-                        // Stop blinking and blink green 3 times
-                        self.should_blink = false;
-                        self.current_ble_profile = profile;
-                        info!("Connected - Custom Controller - Profile: {}", profile);
-
-                        // Blink green 3 times
-                        for _ in 0..4 {
-                            self.blink_ble_profile_led_green();
-                            embassy_time::Timer::after(embassy_time::Duration::from_millis(500))
-                                .await;
-                            self.clear_all_leds();
-                            embassy_time::Timer::after(embassy_time::Duration::from_millis(500))
-                                .await;
-                        }
-                    }
-                    BleState::None => {
-                        // Turn off LEDs when not in BLE mode
-                        self.should_blink = false;
-                        info!("None - Custom Controller");
-                        self.clear_all_leds();
-                    }
-                }
-            }
-            ControllerEvent::Battery(percentage) => {
-                // Update battery percentage when received from BatteryProcessor
-                self.battery_percentage = percentage;
-                info!("Battery updated: {}%", percentage);
-            }
-            ControllerEvent::BleProfile(profile) => {
-                info!("BLE Profile changed to: {}", profile);
-                self.current_ble_profile = profile;
-            }
-            ControllerEvent::Key(_keyboard_event, key_action) => {
-                // Check if it's User7 key (BAT_CHK in Vial)
-                if let KeyAction::Single(Action::Key(KeyCode::User7)) = key_action {
-                    // Toggle the state - if not currently held, it's a press; otherwise it's a release
-                    if !self.user7_held {
-                        // User7 pressed - show battery level
-                        info!("User7 (BAT_CHK) pressed - showing battery level");
-                        self.user7_held = true;
-                        self.is_showing_battery = true;
-                        self.show_battery_level();
-                    } else {
-                        // User7 released - clear LEDs
-                        info!("User7 (BAT_CHK) released - clearing battery display");
-                        self.user7_held = false;
-                        self.is_showing_battery = false;
-                        self.clear_all_leds();
-                    }
-                }
-            }
-            _ => {
-                // Ignore other events
             }
         }
     }
 
-    async fn next_message(&mut self) -> Self::Event {
-        self.sub.next_message_pure().await
+    async fn on_ble_state_change_event(&mut self, event: BleStateChangeEvent) {
+        match event.state {
+            BleState::Advertising => {
+                // Start blinking blue when advertising
+                info!("Advertising - Custom Controller - Profile: {}", event.profile);
+                self.current_ble_profile = event.profile;
+                self.should_blink = true;
+            }
+            BleState::Connected => {
+                // Stop blinking and blink green 4 times
+                self.should_blink = false;
+                self.current_ble_profile = event.profile;
+                info!("Connected - Custom Controller - Profile: {}", event.profile);
+
+                // Blink green 4 times
+                for _ in 0..4 {
+                    self.blink_ble_profile_led_green();
+                    embassy_time::Timer::after(embassy_time::Duration::from_millis(500)).await;
+                    self.clear_all_leds();
+                    embassy_time::Timer::after(embassy_time::Duration::from_millis(500)).await;
+                }
+            }
+            BleState::None => {
+                // Turn off LEDs when not in BLE mode
+                self.should_blink = false;
+                info!("None - Custom Controller");
+                self.clear_all_leds();
+            }
+        }
     }
-}
 
-impl<'d, const N: usize> PollingController for StatusLedController<'d, N> {
-    const INTERVAL: embassy_time::Duration = embassy_time::Duration::from_millis(700);
+    async fn on_battery_state_event(&mut self, event: BatteryStateEvent) {
+        // Update battery percentage when received from BatteryProcessor
+        match event {
+            BatteryStateEvent::Normal(percentage) => {
+                self.battery_percentage = percentage;
+                info!("Battery updated: {}%", percentage);
+            }
+            BatteryStateEvent::Charging => {
+                info!("Battery charging");
+            }
+            BatteryStateEvent::Charged => {
+                self.battery_percentage = 100;
+                info!("Battery fully charged");
+            }
+            BatteryStateEvent::NotAvailable => {
+                info!("Battery not available");
+            }
+        }
+    }
 
-    async fn update(&mut self) {
+    async fn on_ble_profile_change_event(&mut self, event: BleProfileChangeEvent) {
+        info!("BLE Profile changed to: {}", event.profile);
+        self.current_ble_profile = event.profile;
+    }
+
+    async fn on_key_event(&mut self, event: KeyEvent) {
+        // Check if it's User7 key (BAT_CHK in Vial)
+        if let rmk::types::action::KeyAction::Single(Action::User(7)) = event.key_action {
+            // Toggle the state - if not currently held, it's a press; otherwise it's a release
+            if !self.user7_held {
+                // User7 pressed - show battery level
+                info!("User7 (BAT_CHK) pressed - showing battery level");
+                self.user7_held = true;
+                self.is_showing_battery = true;
+                self.show_battery_level();
+            } else {
+                // User7 released - clear LEDs
+                info!("User7 (BAT_CHK) released - clearing battery display");
+                self.user7_held = false;
+                self.is_showing_battery = false;
+                self.clear_all_leds();
+            }
+        }
+    }
+
+    /// Called by PollingController::update() every 700ms (poll_interval)
+    async fn poll(&mut self) {
+        // Debug: always log poll calls to verify polling is working
+        info!(
+            "poll() called: should_blink={}, is_showing_battery={}, leds_on={}",
+            self.should_blink, self.is_showing_battery, self.leds_on
+        );
+
         // Only blink for BLE if we're not currently showing battery level
         if self.should_blink && !self.is_showing_battery {
             info!(
-                "Update: should_blink={}, leds_on={}, profile={}",
-                self.should_blink, self.leds_on, self.current_ble_profile
+                "Blinking: leds_on={}, profile={}",
+                self.leds_on, self.current_ble_profile
             );
             if self.leds_on {
                 self.clear_all_leds();
             } else {
-                // self.set_all_leds_blue();
                 self.blink_ble_profile_led_blue();
             }
         }

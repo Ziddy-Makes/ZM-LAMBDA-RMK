@@ -27,21 +27,17 @@ use nrf_sdc::{self as sdc, mpsl};
 use rand_chacha::ChaCha12Rng;
 use rand_core::SeedableRng;
 use rmk::ble::build_ble_stack;
-use rmk::channel::EVENT_CHANNEL;
 use rmk::config::{
     BehaviorConfig, BleBatteryConfig, DeviceConfig, PositionalConfig, RmkConfig, StorageConfig,
     VialConfig,
 };
-use rmk::controller::PollingController;
 use rmk::debounce::default_debouncer::DefaultDebouncer;
-use rmk::futures::future::{join, join4};
-use rmk::input_device::Runnable;
 use rmk::input_device::adc::{AnalogEventType, NrfAdc};
 use rmk::input_device::battery::BatteryProcessor;
 use rmk::input_device::rotary_encoder::RotaryEncoder;
 use rmk::keyboard::Keyboard;
 use rmk::{
-    HostResources, initialize_encoder_keymap_and_storage, run_devices, run_processor_chain, run_rmk,
+    HostResources, initialize_encoder_keymap_and_storage, run_all, run_rmk,
 };
 use static_cell::StaticCell;
 use vial::{VIAL_KEYBOARD_DEF, VIAL_KEYBOARD_ID};
@@ -251,7 +247,7 @@ async fn main(spawner: Spawner) {
         embassy_time::Duration::from_secs(12),
         None,
     );
-    let mut batt_proc = BatteryProcessor::new(1000, 1400, &keymap);
+    let mut batt_proc = BatteryProcessor::new(1000, 1400);
 
     let mosfet_sk_pwr_ctrl = Output::new(p.P0_29, Level::Low, OutputDrive::Standard);
 
@@ -272,18 +268,10 @@ async fn main(spawner: Spawner) {
     let mut status_led: StatusLedController<'_, NUM_LEDS> =
         StatusLedController::<NUM_LEDS>::new(ws2812, mosfet_sk_pwr_ctrl);
 
-    join4(
-        run_devices! (
-            (matrix, encoder, adc_device) => EVENT_CHANNEL,
-        ),
-        run_processor_chain! {
-            EVENT_CHANNEL => [batt_proc],
-        },
-        keyboard.run(), // Keyboard is special
-        join(
-            status_led.polling_loop(),
-            run_rmk(&keymap, driver, &stack, &mut storage, rmk_config),
-        ),
+    // Run all devices, processors, keyboard, controller, and RMK concurrently
+    rmk::embassy_futures::join::join(
+        run_all!(matrix, encoder, adc_device, batt_proc, keyboard, status_led),
+        run_rmk(&keymap, driver, &stack, &mut storage, rmk_config),
     )
     .await;
 }
