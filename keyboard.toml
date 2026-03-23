@@ -4,3 +4,6 @@ macro_space_size = 2048
 
 
 vial_channel_size = 8
+
+[event.action]
+subs = 1

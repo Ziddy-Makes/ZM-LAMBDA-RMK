@@ -37,7 +37,7 @@ use rmk::input_device::battery::BatteryProcessor;
 use rmk::input_device::rotary_encoder::RotaryEncoder;
 use rmk::keyboard::Keyboard;
 use rmk::{
-    HostResources, initialize_encoder_keymap_and_storage, run_all, run_rmk,
+    HostResources, KeymapData, initialize_keymap_and_storage, run_all, run_rmk,
 };
 use static_cell::StaticCell;
 use vial::{VIAL_KEYBOARD_DEF, VIAL_KEYBOARD_ID};
@@ -80,11 +80,11 @@ fn build_sdc<'d, const N: usize>(
     mem: &'d mut sdc::Mem<N>,
 ) -> Result<nrf_sdc::SoftdeviceController<'d>, nrf_sdc::Error> {
     sdc::Builder::new()?
-        .support_adv()?
-        .support_peripheral()?
-        .support_dle_peripheral()?
-        .support_phy_update_peripheral()?
-        .support_le_2m_phy()?
+        .support_adv()
+        .support_peripheral()
+        .support_dle_peripheral()
+        .support_phy_update_peripheral()
+        .support_le_2m_phy()
         .peripheral_count(1)?
         .buffer_cfg(L2CAP_MTU as u16, L2CAP_MTU as u16, L2CAP_TXQ, L2CAP_RXQ)?
         .build(p, rng, mpsl, mem)
@@ -186,10 +186,13 @@ async fn main(spawner: Spawner) {
         ..Default::default()
     };
 
-    // Initialze keyboard stuffs
+    // Initialize keyboard stuffs
     // Initialize the storage and keymap
-    let mut default_keymap = keymap::get_default_keymap();
-    let mut key_config = PositionalConfig::default();
+    let mut keymap_data = KeymapData::new_with_encoder(
+        keymap::get_default_keymap(),
+        keymap::get_default_encoder_map(),
+    );
+    let key_config = PositionalConfig::default();
     let mut behavior_config = BehaviorConfig::default();
 
     // Configure tapdance behaviors
@@ -198,14 +201,12 @@ async fn main(spawner: Spawner) {
     // Configure macros
     keymap::configure_macros(&mut behavior_config);
 
-    let mut encoder_map = keymap::get_default_encoder_map();
-    let (keymap, mut storage) = initialize_encoder_keymap_and_storage(
-        &mut default_keymap,
-        &mut encoder_map,
+    let (keymap, mut storage) = initialize_keymap_and_storage(
+        &mut keymap_data,
         flash,
         &storage_config,
         &mut behavior_config,
-        &mut key_config,
+        &key_config,
     )
     .await;
 

@@ -1,17 +1,16 @@
 use defmt::info;
 use embassy_nrf::gpio::Output;
 use embassy_nrf::spim::Spim;
-use rmk::ble::BleState;
 use rmk::event::{
-    BatteryStateEvent, BleProfileChangeEvent, BleStateChangeEvent, ConnectionChangeEvent,
-    ConnectionType, KeyEvent,
+    ActionEvent, BatteryStateEvent, BleStatusChangeEvent, ConnectionChangeEvent, ConnectionType,
 };
-use rmk::macros::controller;
+use rmk::macros::processor;
 use rmk::types::action::Action;
+use rmk::types::ble::{BleState, BleStatus};
 use smart_leds::{RGB8, SmartLedsWrite};
 use ws2812_spi::Ws2812;
 
-#[controller(subscribe = [ConnectionChangeEvent, BleStateChangeEvent, BatteryStateEvent, BleProfileChangeEvent, KeyEvent], poll_interval = 700)]
+#[processor(subscribe = [ConnectionChangeEvent, BleStatusChangeEvent, BatteryStateEvent, ActionEvent], poll_interval = 1400)]
 pub struct StatusLedController<'d, const N: usize> {
     ws2812: Ws2812<Spim<'d>>,
     power_pin: Output<'d>,
@@ -153,19 +152,20 @@ impl<'d, const N: usize> StatusLedController<'d, N> {
         }
     }
 
-    async fn on_ble_state_change_event(&mut self, event: BleStateChangeEvent) {
-        match event.state {
+    async fn on_ble_status_change_event(&mut self, event: BleStatusChangeEvent) {
+        let BleStatus { profile, state } = event.0;
+        match state {
             BleState::Advertising => {
                 // Start blinking blue when advertising
-                info!("Advertising - Custom Controller - Profile: {}", event.profile);
-                self.current_ble_profile = event.profile;
+                info!("Advertising - Custom Controller - Profile: {}", profile);
+                self.current_ble_profile = profile;
                 self.should_blink = true;
             }
             BleState::Connected => {
                 // Stop blinking and blink green 4 times
                 self.should_blink = false;
-                self.current_ble_profile = event.profile;
-                info!("Connected - Custom Controller - Profile: {}", event.profile);
+                self.current_ble_profile = profile;
+                info!("Connected - Custom Controller - Profile: {}", profile);
 
                 // Blink green 4 times
                 for _ in 0..4 {
@@ -175,12 +175,13 @@ impl<'d, const N: usize> StatusLedController<'d, N> {
                     embassy_time::Timer::after(embassy_time::Duration::from_millis(500)).await;
                 }
             }
-            BleState::None => {
+            BleState::Inactive => {
                 // Turn off LEDs when not in BLE mode
                 self.should_blink = false;
-                info!("None - Custom Controller");
+                info!("Inactive - Custom Controller");
                 self.clear_all_leds();
             }
+            _ => {}
         }
     }
 
@@ -204,14 +205,9 @@ impl<'d, const N: usize> StatusLedController<'d, N> {
         }
     }
 
-    async fn on_ble_profile_change_event(&mut self, event: BleProfileChangeEvent) {
-        info!("BLE Profile changed to: {}", event.profile);
-        self.current_ble_profile = event.profile;
-    }
-
-    async fn on_key_event(&mut self, event: KeyEvent) {
-        // Check if it's User7 key (BAT_CHK in Vial)
-        if let rmk::types::action::KeyAction::Single(Action::User(7)) = event.key_action {
+    async fn on_action_event(&mut self, event: ActionEvent) {
+        // Check if it's User7 action (BAT_CHK in Vial)
+        if let Action::User(7) = event.action {
             // Toggle the state - if not currently held, it's a press; otherwise it's a release
             if !self.user7_held {
                 // User7 pressed - show battery level
@@ -229,13 +225,13 @@ impl<'d, const N: usize> StatusLedController<'d, N> {
         }
     }
 
-    /// Called by PollingController::update() every 700ms (poll_interval)
+    /// Called by PollingController::update() every 1400ms (poll_interval)
     async fn poll(&mut self) {
         // Debug: always log poll calls to verify polling is working
-        info!(
-            "poll() called: should_blink={}, is_showing_battery={}, leds_on={}",
-            self.should_blink, self.is_showing_battery, self.leds_on
-        );
+        // info!(
+        //     "poll() called: should_blink={}, is_showing_battery={}, leds_on={}",
+        //     self.should_blink, self.is_showing_battery, self.leds_on
+        // );
 
         // Only blink for BLE if we're not currently showing battery level
         if self.should_blink && !self.is_showing_battery {

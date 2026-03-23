@@ -37,7 +37,7 @@ You can
 1) Hookup your board to the **nRF52-DK / SWD** after UF2 uploading
 2) Run the following command below
 ```bash
-probe-rs attach --chip nRF52840_xxAA target/thumbv7em-none-eabihf/release/ZM9K-BLE-RMK
+probe-rs attach --chip nRF52840_xxAA target/thumbv7em-none-eabihf/release/ZM-LAMBDA-RMK
 ```
 To still view **RMK** logs even with UF2 uploaded firmware ✅
 
@@ -75,7 +75,7 @@ Both
 ### Erase, Flash, but don't Attach to Log Out
 
 ```bash
-probe-rs download --chip nRF52840_xxAA target/thumbv7em-none-eabihf/release/ZM9K-BLE-RMK
+probe-rs download --chip nRF52840_xxAA probe-rs attach --chip nRF52840_xxAA target/thumbv7em-none-eabihf/release/ZM-LAMBDA-RMK
 ```
 
 ### When your completely locked out of the nRF52840
