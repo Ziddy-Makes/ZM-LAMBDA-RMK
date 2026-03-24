@@ -10,7 +10,9 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-rmk = { git = "https://github.com/HaoboGu/rmk", rev = "aed0972", features = [
+# DEBUG: Using local RMK with diagnostic logging
+# Original: rmk = { git = "https://github.com/HaoboGu/rmk", rev = "aed0972", features = [...] }
+rmk = { path = "../rmk-debug/rmk", features = [
     "async_matrix",
     "nrf52840_ble",
     "adafruit_bl",
