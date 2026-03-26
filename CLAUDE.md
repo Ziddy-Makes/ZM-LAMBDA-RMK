@@ -84,7 +84,7 @@ Pin mappings and schematic details are in `docs/ABOUT-ZM-LAMBDA.md`. Key pins:
 - **Matrix:** Columns (output) P0_15, P0_11, P0_12, P1_09 / Rows (input) P0_17, P0_20, P0_22, P0_24
 - **LEDs:** SPI3 data P0_26, power MOSFET P0_29
 - **Encoder:** P0_08 (A), P0_06 (B)
-- **Battery ADC:** P0_04 (external voltage divider)
+- **Battery ADC:** P0_02 (external voltage divider)
 - **DC/DC regulators must remain disabled** — no LC filter on board
 
 ## Configuration Files

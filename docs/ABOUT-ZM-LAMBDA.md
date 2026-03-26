@@ -18,7 +18,7 @@
     - (+)Postive End of Li-Ion Battery
     - 400kΩ resistor
   - Middle:
-    - Connected to Pin `P1_00` 
+    - Connected to Pin `P0_02` 
   - Bottom:
     - 1MΩ resistor
     - GND

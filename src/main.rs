@@ -155,7 +155,7 @@ async fn main(spawner: Spawner) {
 
     // Initialize the ADC.
     // We are only using one channel for detecting battery level
-    let adc_pin = p.P0_04.degrade_saadc();
+    let adc_pin = p.P0_02.degrade_saadc();
     // let is_charging_pin = Input::new(p.P1_09, embassy_nrf::gpio::Pull::Up);
     let saadc = init_adc(adc_pin, p.SAADC);
     // Wait for ADC calibration.
