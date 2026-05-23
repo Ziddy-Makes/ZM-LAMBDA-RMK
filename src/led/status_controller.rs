@@ -2,24 +2,37 @@ use defmt::info;
 use embassy_nrf::gpio::Output;
 use embassy_nrf::spim::Spim;
 use rmk::event::{
-    ActionEvent, BatteryStateEvent, BleStatusChangeEvent, ConnectionChangeEvent, ConnectionType,
+    ActionEvent, BatteryStatusEvent, ChargingStateEvent, ConnectionStatusChangeEvent,
+    ConnectionType,
 };
 use rmk::macros::processor;
 use rmk::types::action::Action;
-use rmk::types::ble::{BleState, BleStatus};
+use rmk::types::battery::BatteryStatus;
+use rmk::types::ble::BleState;
 use smart_leds::{RGB8, SmartLedsWrite};
 use ws2812_spi::Ws2812;
 
-#[processor(subscribe = [ConnectionChangeEvent, BleStatusChangeEvent, BatteryStateEvent, ActionEvent], poll_interval = 1400)]
+#[processor(
+    subscribe = [
+        ConnectionStatusChangeEvent,
+        BatteryStatusEvent,
+        ChargingStateEvent,
+        ActionEvent,
+    ],
+    poll_interval = 1400,
+)]
 pub struct StatusLedController<'d, const N: usize> {
     ws2812: Ws2812<Spim<'d>>,
     power_pin: Output<'d>,
     should_blink: bool,
     leds_on: bool,
     current_ble_profile: u8,
+    last_ble_state: BleState,
+    active_transport: Option<ConnectionType>,
     battery_percentage: u8,
     is_showing_battery: bool,
     user7_held: bool,
+    charging: bool,
 }
 
 impl<'d, const N: usize> StatusLedController<'d, N> {
@@ -30,9 +43,12 @@ impl<'d, const N: usize> StatusLedController<'d, N> {
             should_blink: true, // Start true - we're advertising on boot, event may be missed due to race
             leds_on: false,
             current_ble_profile: 0,
+            last_ble_state: BleState::Inactive,
+            active_transport: None,
             battery_percentage: 100,
             is_showing_battery: false,
             user7_held: false,
+            charging: false,
         }
     }
 
@@ -44,7 +60,6 @@ impl<'d, const N: usize> StatusLedController<'d, N> {
         );
         let mut data = [RGB8 { r: 0, g: 0, b: 0 }; N];
 
-        // Bounds check to prevent panic
         let profile_index = (self.current_ble_profile as usize).min(N - 1);
         data[profile_index] = RGB8 { r: 0, g: 0, b: 70 };
 
@@ -67,7 +82,6 @@ impl<'d, const N: usize> StatusLedController<'d, N> {
         );
         let mut data = [RGB8 { r: 0, g: 0, b: 0 }; N];
 
-        // Bounds check to prevent panic
         let profile_index = (self.current_ble_profile as usize).min(N - 1);
         data[profile_index] = RGB8 { r: 0, g: 70, b: 0 };
 
@@ -103,14 +117,15 @@ impl<'d, const N: usize> StatusLedController<'d, N> {
             ((self.battery_percentage as usize - 1) * (N - 1) / 88) + 1
         };
 
-        // Choose color based on battery level: red if under 30%, green otherwise
-        let led_color = if self.battery_percentage < 30 {
+        // Charging gets a distinct amber tint; otherwise red < 30% else green.
+        let led_color = if self.charging {
+            RGB8 { r: 70, g: 35, b: 0 } // Amber while charging
+        } else if self.battery_percentage < 30 {
             RGB8 { r: 70, g: 0, b: 0 } // Red for low battery
         } else {
             RGB8 { r: 0, g: 70, b: 0 } // Green for normal battery
         };
 
-        // Create LED array and light up the first num_leds
         let mut data = [RGB8::default(); N];
         for i in 0..num_leds {
             data[i] = led_color;
@@ -120,103 +135,113 @@ impl<'d, const N: usize> StatusLedController<'d, N> {
         self.leds_on = true;
 
         info!(
-            "Battery level: {}% ({} LEDs, {})",
-            self.battery_percentage,
-            num_leds,
-            if self.battery_percentage < 30 {
-                "RED"
-            } else {
-                "GREEN"
-            }
+            "Battery level: {}% ({} LEDs, charging={})",
+            self.battery_percentage, num_leds, self.charging
         );
     }
 
-    // Event handlers for #[controller] macro
+    // Event handlers for #[processor] macro
 
-    async fn on_connection_change_event(&mut self, event: ConnectionChangeEvent) {
-        info!("ConnectionType changed: {:?}", event.connection_type);
-        match event.connection_type {
-            ConnectionType::Ble => {
-                // BLE mode - start advertising indicator
-                info!("BLE mode activated - starting advertising indicator");
-                self.should_blink = true;
-            }
-            ConnectionType::Usb => {
-                // USB mode - turn off BLE indicators
-                info!("USB mode - stopping BLE indicators");
-                self.should_blink = false;
-                if !self.is_showing_battery {
-                    self.clear_all_leds();
-                }
+    async fn on_connection_status_change_event(&mut self, event: ConnectionStatusChangeEvent) {
+        let status = event.0;
+        let active = status.decide_active();
+        let prev_transport = self.active_transport;
+        self.active_transport = active;
+
+        let prev_ble_state = self.last_ble_state;
+        self.last_ble_state = status.ble.state;
+        self.current_ble_profile = status.ble.profile;
+
+        info!(
+            "ConnectionStatus changed: active={:?}, ble.state={:?}, ble.profile={}",
+            active, status.ble.state, status.ble.profile
+        );
+
+        // Transport-routing branch (replaces old on_connection_change_event):
+        // Once USB is active, kill BLE advertising indicators.
+        if matches!(active, Some(ConnectionType::Usb))
+            && !matches!(prev_transport, Some(ConnectionType::Usb))
+        {
+            info!("USB active - stopping BLE indicators");
+            self.should_blink = false;
+            if !self.is_showing_battery {
+                self.clear_all_leds();
             }
         }
-    }
 
-    async fn on_ble_status_change_event(&mut self, event: BleStatusChangeEvent) {
-        let BleStatus { profile, state } = event.0;
-        match state {
+        // BLE state branch (replaces old on_ble_status_change_event):
+        match status.ble.state {
             BleState::Advertising => {
-                // Start blinking blue when advertising
-                info!("Advertising - Custom Controller - Profile: {}", profile);
-                self.current_ble_profile = profile;
-                self.should_blink = true;
+                // Don't override USB-active suppression: only blink when BLE is the
+                // intended path (no USB active).
+                if !matches!(active, Some(ConnectionType::Usb)) {
+                    info!(
+                        "Advertising - profile: {}",
+                        status.ble.profile
+                    );
+                    self.should_blink = true;
+                }
             }
             BleState::Connected => {
-                // Stop blinking and blink green 4 times
                 self.should_blink = false;
-                self.current_ble_profile = profile;
-                info!("Connected - Custom Controller - Profile: {}", profile);
-
-                // Blink green 4 times
-                for _ in 0..4 {
-                    self.blink_ble_profile_led_green();
-                    embassy_time::Timer::after(embassy_time::Duration::from_millis(500)).await;
-                    self.clear_all_leds();
-                    embassy_time::Timer::after(embassy_time::Duration::from_millis(500)).await;
+                // Only flash green on a real transition into Connected so it doesn't
+                // re-fire on unrelated status changes (e.g. USB suspend toggles).
+                if prev_ble_state != BleState::Connected {
+                    info!("Connected - profile: {}", status.ble.profile);
+                    for _ in 0..4 {
+                        self.blink_ble_profile_led_green();
+                        embassy_time::Timer::after(embassy_time::Duration::from_millis(500)).await;
+                        self.clear_all_leds();
+                        embassy_time::Timer::after(embassy_time::Duration::from_millis(500)).await;
+                    }
                 }
             }
             BleState::Inactive => {
-                // Turn off LEDs when not in BLE mode
                 self.should_blink = false;
-                info!("Inactive - Custom Controller");
-                self.clear_all_leds();
+                if !self.is_showing_battery {
+                    info!("Inactive");
+                    self.clear_all_leds();
+                }
             }
-            _ => {}
         }
     }
 
-    async fn on_battery_state_event(&mut self, event: BatteryStateEvent) {
-        // Update battery percentage when received from BatteryProcessor
-        match event {
-            BatteryStateEvent::Normal(percentage) => {
-                self.battery_percentage = percentage;
-                info!("Battery updated: {}%", percentage);
-            }
-            BatteryStateEvent::Charging => {
-                info!("Battery charging");
-            }
-            BatteryStateEvent::Charged => {
-                self.battery_percentage = 100;
-                info!("Battery fully charged");
-            }
-            BatteryStateEvent::NotAvailable => {
+    async fn on_battery_status_event(&mut self, event: BatteryStatusEvent) {
+        match event.0 {
+            BatteryStatus::Unavailable => {
                 info!("Battery not available");
             }
+            BatteryStatus::Available {
+                charge_state: _,
+                level,
+            } => match level {
+                Some(pct) => {
+                    self.battery_percentage = pct;
+                    info!("Battery updated: {}%", pct);
+                }
+                None => info!("Battery level unknown"),
+            },
+        }
+    }
+
+    async fn on_charging_state_event(&mut self, event: ChargingStateEvent) {
+        self.charging = event.charging;
+        info!("Charging state changed: {}", self.charging);
+        // Refresh battery LED if currently visible so the colour reflects the new state.
+        if self.is_showing_battery {
+            self.show_battery_level();
         }
     }
 
     async fn on_action_event(&mut self, event: ActionEvent) {
         // Check if it's User7 action (BAT_CHK in Vial)
         if let Action::User(7) = event.action {
-            // Toggle the state - if not currently held, it's a press; otherwise it's a release
             if !self.user7_held {
-                // User7 pressed - show battery level
                 info!("User7 (BAT_CHK) pressed - showing battery level");
                 self.user7_held = true;
                 self.is_showing_battery = true;
                 self.show_battery_level();
             } else {
-                // User7 released - clear LEDs
                 info!("User7 (BAT_CHK) released - clearing battery display");
                 self.user7_held = false;
                 self.is_showing_battery = false;
@@ -225,14 +250,8 @@ impl<'d, const N: usize> StatusLedController<'d, N> {
         }
     }
 
-    /// Called by PollingController::update() every 1400ms (poll_interval)
+    /// Called by PollingProcessor::update() every 1400ms (poll_interval)
     async fn poll(&mut self) {
-        // Debug: always log poll calls to verify polling is working
-        // info!(
-        //     "poll() called: should_blink={}, is_showing_battery={}, leds_on={}",
-        //     self.should_blink, self.is_showing_battery, self.leds_on
-        // );
-
         // Only blink for BLE if we're not currently showing battery level
         if self.should_blink && !self.is_showing_battery {
             info!(

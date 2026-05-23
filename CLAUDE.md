@@ -54,11 +54,12 @@ The `PollingController` trait provides a periodic `update()` callback (e.g., 700
 
 ### Concurrency Model
 
-All tasks run concurrently via Embassy async on a single-threaded executor:
+All tasks run concurrently via Embassy async on a single-threaded executor. `run_rmk` no longer exists — transports run as tasks inside `run_all!`:
 ```rust
-join(
-    run_all!(matrix, encoder, adc_device, batt_proc, keyboard, status_led),
-    run_rmk(&keymap, driver, &stack, &mut storage, rmk_config),
+run_all!(
+    matrix, encoder, adc_device, storage,
+    usb_transport, ble_transport, wpm_processor,
+    batt_proc, keyboard, host_service, status_led,
 )
 ```
 
@@ -74,8 +75,9 @@ Storage region: `0xA0000`, 12 sectors × 4KB = 48KB for keymap/bonds/macros.
 
 ## Key Dependencies (pinned to git revisions)
 
-- **RMK** — `rev ca38784`, features: `async_matrix`, `nrf52840_ble`, `adafruit_bl`, `controller`
-- **nrf-sdc / nrf-mpsl** — `rev 11d5c3c` from `alexmoon/nrf-sdc`
+- **RMK** — `rev bf9922b`, features: `async_matrix`, `nrf52840_ble`, `adafruit_bl`
+- **nrf-sdc / nrf-mpsl** — `rev ffe59a7a` from `haobogu/nrf-sdc`
+- **embassy-nrf** `0.10`, **embassy-executor** `0.10` (feature `platform-cortex-m`)
 - **ws2812-spi** — Custom fork `aziddy/ws2812-spi-rs`, branch `nrf52840_at4Mhz_support` (4MHz SPI bit patterns)
 
 ## Hardware Reference

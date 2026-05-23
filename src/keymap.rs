@@ -1,7 +1,7 @@
 use rmk::keyboard_macros::{define_macro_sequences, to_macro_sequence};
-use rmk::morse::Morse;
-use rmk::types::action::{Action, EncoderAction, KeyAction, KeyboardAction, MorseMode, MorseProfile};
+use rmk::types::action::{Action, EncoderAction, KeyAction, KeyboardAction};
 use rmk::types::modifier::ModifierCombination;
+use rmk::types::morse::{Morse, MorseMode, MorseProfile};
 use rmk::{a, encoder, k, layer, lt, td};
 
 // Modifier combination aliases
@@ -98,7 +98,7 @@ pub const fn get_default_encoder_map() -> [[EncoderAction; NUM_ENCODER]; NUM_LAY
 /// Configure tapdance behaviors
 /// This function sets up tapdance configurations that can be referenced in the keymap using td!(index)
 pub fn configure_tapdance(behavior_config: &mut rmk::config::BehaviorConfig) {
-    use rmk::morse::{HOLD, TAP};
+    use rmk::types::morse::{HOLD, TAP};
 
     // Tapdance 0 - Hold for BLE clear
     let mut td0 = Morse::default();
@@ -108,22 +108,22 @@ pub fn configure_tapdance(behavior_config: &mut rmk::config::BehaviorConfig) {
         Some(200),               // 200ms hold timeout
         Some(200),               // 200ms gap timeout
     );
-    td0.put(HOLD, BLE_CLR);
+    let _ = td0.put(HOLD, BLE_CLR);
 
     //////////////////////////////////////////////////////////////////////////////
 
     // Tapdance 1 - Hold for bootloader
     let mut td1 = Morse::default();
     td1.profile = MorseProfile::new(None, Some(MorseMode::Normal), Some(200), Some(200));
-    td1.put(HOLD, Action::KeyboardControl(KeyboardAction::Bootloader));
+    let _ = td1.put(HOLD, Action::KeyboardControl(KeyboardAction::Bootloader));
 
     //////////////////////////////////////////////////////////////////////////////
 
     // Tapdance 2 - Tap for BLE3, Hold for BLE clear
     let mut td2 = Morse::default();
     td2.profile = MorseProfile::new(None, Some(MorseMode::Normal), Some(200), Some(200));
-    td2.put(TAP, BLE3);  // User(2) = BLE3
-    td2.put(HOLD, BLE_CLR);  // User(5) = BLE_CLR
+    let _ = td2.put(TAP, BLE3);  // User(2) = BLE3
+    let _ = td2.put(HOLD, BLE_CLR);  // User(5) = BLE_CLR
 
     //////////////////////////////////////////////////////////////////////////////
 

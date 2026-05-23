@@ -6,4 +6,20 @@ macro_space_size = 2048
 vial_channel_size = 8
 
 [event.action]
+channel_size = 16
+pubs = 1
 subs = 1
+
+# Our StatusLedController shares ChargingStateEvent with the always-on
+# BatteryProcessor (input_device::battery::BatteryProcessor).
+[event.charging_state]
+channel_size = 2
+pubs = 1
+subs = 2
+
+# Our StatusLedController shares BatteryStatusEvent with the per-BLE-connection
+# BleBatteryServer.
+[event.battery_status]
+channel_size = 1
+pubs = 1
+subs = 2

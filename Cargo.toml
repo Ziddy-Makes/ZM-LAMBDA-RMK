@@ -10,17 +10,17 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-rmk = { git = "https://github.com/HaoboGu/rmk", rev = "aed0972", features = [
+rmk = { git = "https://github.com/HaoboGu/rmk", rev = "bf9922b", features = [
     "async_matrix",
     "nrf52840_ble",
     "adafruit_bl",
 ] }
-nrf-sdc = { git = "https://github.com/alexmoon/nrf-sdc", rev = "43df6b8", features = [
+nrf-sdc = { git = "https://github.com/haobogu/nrf-sdc", rev = "ffe59a7aefaaa145a3d2474602f33387f80dcefa", features = [
     "defmt",
     "peripheral",
     "nrf52840",
 ] }
-nrf-mpsl = { git = "https://github.com/alexmoon/nrf-sdc", rev = "43df6b8", features = [
+nrf-mpsl = { git = "https://github.com/haobogu/nrf-sdc", rev = "ffe59a7aefaaa145a3d2474602f33387f80dcefa", features = [
     "defmt",
     "critical-section-impl",
     "nrf52840",
@@ -30,7 +30,7 @@ bt-hci = { version = "0.8", features = ["defmt"] }
 cortex-m = "0.7.7"
 cortex-m-rt = "0.7.5"
 embassy-time = { version = "0.5", features = ["tick-hz-32_768", "defmt"] }
-embassy-nrf = { version = "0.9", features = [
+embassy-nrf = { version = "0.10", features = [
     "defmt",
     "nrf52840",
     "time-driver-rtc1",
@@ -39,9 +39,9 @@ embassy-nrf = { version = "0.9", features = [
     "nfc-pins-as-gpio",
     "time",
 ] }
-embassy-executor = { version = "0.9", features = [
+embassy-executor = { version = "0.10", features = [
     "defmt",
-    "arch-cortex-m",
+    "platform-cortex-m",
     "executor-thread",
 ] }
 defmt = "1.0"
@@ -87,3 +87,12 @@ debug = true            # no overhead for bare-metal
 opt-level = "z"         # optimize for binary size
 overflow-checks = false
 lto = "fat"
+
+# Local fork of RMK with USB descriptor buffer bumped from 128 -> 512 bytes.
+# Upstream sizes the config descriptor buffer for keyboard + 1 extra HID; our
+# vial+host build adds a third HID interface (host_rw) which overflows it.
+[patch."https://github.com/HaoboGu/rmk"]
+rmk = { path = "../rmk-zm-patch/rmk" }
+rmk-config = { path = "../rmk-zm-patch/rmk-config" }
+rmk-macro = { path = "../rmk-zm-patch/rmk-macro" }
+rmk-types = { path = "../rmk-zm-patch/rmk-types" }

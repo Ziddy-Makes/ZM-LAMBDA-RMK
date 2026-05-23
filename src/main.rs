@@ -26,19 +26,20 @@ use nrf_sdc::mpsl::MultiprotocolServiceLayer;
 use nrf_sdc::{self as sdc, mpsl};
 use rand_chacha::ChaCha12Rng;
 use rand_core::SeedableRng;
-use rmk::ble::build_ble_stack;
+use rmk::ble::{BleTransport, build_ble_stack};
 use rmk::config::{
     BehaviorConfig, BleBatteryConfig, DeviceConfig, PositionalConfig, RmkConfig, StorageConfig,
     VialConfig,
 };
 use rmk::debounce::default_debouncer::DefaultDebouncer;
+use rmk::host::{HostService, KeyboardContext};
 use rmk::input_device::adc::{AnalogEventType, NrfAdc};
 use rmk::input_device::battery::BatteryProcessor;
-use rmk::input_device::rotary_encoder::RotaryEncoder;
+use rmk::input_device::rotary_encoder::{DefaultPhase, RotaryEncoder};
 use rmk::keyboard::Keyboard;
-use rmk::{
-    HostResources, KeymapData, initialize_keymap_and_storage, run_all, run_rmk,
-};
+use rmk::processor::builtin::wpm::WpmProcessor;
+use rmk::usb::UsbTransport;
+use rmk::{HostResources, KeymapData, initialize_keymap_and_storage, run_all};
 use static_cell::StaticCell;
 use vial::{VIAL_KEYBOARD_DEF, VIAL_KEYBOARD_ID};
 use ws2812_spi::Ws2812;
@@ -135,7 +136,7 @@ async fn main(spawner: Spawner) {
         lfclk_cfg,
         SESSION_MEM.init(mpsl::SessionMem::new())
     )));
-    spawner.must_spawn(mpsl_task(&*mpsl));
+    spawner.spawn(unwrap!(mpsl_task(&*mpsl)));
     let sdc_p = sdc::Peripherals::new(
         p.PPI_CH17, p.PPI_CH18, p.PPI_CH20, p.PPI_CH21, p.PPI_CH22, p.PPI_CH23, p.PPI_CH24,
         p.PPI_CH25, p.PPI_CH26, p.PPI_CH27, p.PPI_CH28, p.PPI_CH29,
@@ -235,12 +236,13 @@ async fn main(spawner: Spawner) {
     let mut matrix =
         ::rmk::matrix::Matrix::<_, _, _, ROW, COL, true>::new(input_pins, output_pins, debouncer);
     let mut keyboard = Keyboard::new(&keymap);
+    let host_ctx = KeyboardContext::new(&keymap);
 
     // Initialize the encoder
     // Encoder Pin A: P0_08, Pin B: P0_06
     let pin_a = Input::new(p.P0_08, embassy_nrf::gpio::Pull::Up);
     let pin_b = Input::new(p.P0_06, embassy_nrf::gpio::Pull::Up);
-    let mut encoder = RotaryEncoder::with_resolution(pin_a, pin_b, 4, false, 0);
+    let mut encoder = RotaryEncoder::with_phase(pin_a, pin_b, DefaultPhase, 0);
 
     let mut adc_device = NrfAdc::new(
         saadc,
@@ -269,10 +271,23 @@ async fn main(spawner: Spawner) {
     let mut status_led: StatusLedController<'_, NUM_LEDS> =
         StatusLedController::<NUM_LEDS>::new(ws2812, mosfet_sk_pwr_ctrl);
 
-    // Run all devices, processors, keyboard, controller, and RMK concurrently
-    rmk::embassy_futures::join::join(
-        run_all!(matrix, encoder, adc_device, batt_proc, keyboard, status_led),
-        run_rmk(&keymap, driver, &stack, &mut storage, rmk_config),
+    let mut usb_transport = UsbTransport::new(driver, rmk_config.device_config);
+    let mut host_service = HostService::new(&host_ctx, &rmk_config);
+    let mut ble_transport = BleTransport::new(&stack, rmk_config).await;
+    let mut wpm_processor = WpmProcessor::new();
+
+    run_all!(
+        matrix,
+        encoder,
+        adc_device,
+        storage,
+        usb_transport,
+        ble_transport,
+        wpm_processor,
+        batt_proc,
+        keyboard,
+        host_service,
+        status_led
     )
     .await;
 }
