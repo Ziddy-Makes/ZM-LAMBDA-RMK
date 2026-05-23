@@ -22,6 +22,9 @@ cargo make uf2 --release
 
 # COMBINED: Build & UF2 Generate
 cargo build --release && cargo make uf2 --release
+
+# COMBINED: Build, UF2 Generate & Auto-Upload to first UF2 bootloader device
+cargo build --release && cargo make uf2 --release && cp ZM-LAMBDA-RMK.uf2 "$(ls -d /Volumes/*BOOT* 2>/dev/null | head -1)/"
 ```
 
 Build & Flash/Run (Debugger Connected)

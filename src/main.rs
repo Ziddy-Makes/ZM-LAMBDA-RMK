@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+mod timestamp;
 mod vial;
 #[macro_use]
 mod macros;
