@@ -1,5 +1,9 @@
 # nrf52840 BLE example
 
+ZM-LAMBDA-RMK is pinned to upstream RMK `80c0bda7` (2026-10-22). Build with
+`cargo build --release --locked`. See [upstream upgrade notes](docs/UPSTREAM-UPGRADE.md)
+for the integration changes and the saved-settings reset on first flash.
+
 RMK supports [nice!nano](https://nicekeyboards.com/nice-nano) as well as any custom nrf52840 board you have. 
 
 ## Nice!nano support
@@ -20,7 +24,7 @@ The following are steps of how to get .uf2 firmware work in RMK:
 
    Set your nice!nano to bootloader mode, a USB drive will show. Just drag the .uf2 firmware to USB drive. RMK will be automatically flashed. Check nice!nano's document: https://nicekeyboards.com/docs/nice-nano/getting-started#flashing-firmware-and-bootloaders. 
 
-Note that RMK will switch to USB mode if an USB cable is connected. Remember to remove USB cable after flashing!
+RMK selects USB when a host configures the USB device. Charge-only USB power leaves BLE available.
 
 You can also check the instruction [here](https://nicekeyboards.com/docs/nice-nano/) for more info about nice!nano.
 

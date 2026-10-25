@@ -1,8 +1,8 @@
-use rmk::keyboard_macros::{define_macro_sequences, to_macro_sequence};
 use rmk::types::action::{Action, EncoderAction, KeyAction, KeyboardAction};
+use rmk::types::keyboard_macros::{MacroOp, validate_default_macros};
 use rmk::types::modifier::ModifierCombination;
 use rmk::types::morse::{Morse, MorseMode, MorseProfile};
-use rmk::{a, encoder, k, layer, lt, td};
+use rmk::{a, encoder, k, layer, lt, td, text};
 
 // Modifier combination aliases
 const _LCTRL: ModifierCombination = ModifierCombination::LCTRL;
@@ -122,8 +122,8 @@ pub fn configure_tapdance(behavior_config: &mut rmk::config::BehaviorConfig) {
     // Tapdance 2 - Tap for BLE3, Hold for BLE clear
     let mut td2 = Morse::default();
     td2.profile = MorseProfile::new(None, Some(MorseMode::Normal), Some(200), Some(200));
-    let _ = td2.put(TAP, BLE3);  // User(2) = BLE3
-    let _ = td2.put(HOLD, BLE_CLR);  // User(5) = BLE_CLR
+    let _ = td2.put(TAP, BLE3); // User(2) = BLE3
+    let _ = td2.put(HOLD, BLE_CLR); // User(5) = BLE_CLR
 
     //////////////////////////////////////////////////////////////////////////////
 
@@ -139,11 +139,7 @@ pub fn configure_macros(behavior_config: &mut rmk::config::BehaviorConfig) {
     // Use in Keymap array
     // KeyAction::Single(Action::TriggerMacro(0))
 
-    // Macro 0: Text macro example
-    let macro0 = to_macro_sequence("Ziddy Makes was here (:");
-
-    // Create macro sequences array and define them
-    let macro_sequences = [macro0];
-    let binary_macros = define_macro_sequences(&macro_sequences);
-    behavior_config.keyboard_macros.macro_sequences = binary_macros;
+    const MACROS: &[&[MacroOp]] = &[&text!("Ziddy Makes was here (:")];
+    const _: () = assert!(validate_default_macros(MACROS));
+    behavior_config.keyboard_macros = MACROS;
 }

@@ -6,11 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ZM-LAMBDA-RMK is BLE/USB keyboard firmware for the **nRF52840** written in **embedded Rust** (`#![no_std]`). It uses the **RMK** (Rust Mechanical Keyboard) framework with **Embassy** async runtime. The hardware is a 4x4 matrix keyboard with 14 WS2812B RGB LEDs, a rotary encoder, and Li-Ion battery monitoring.
 
+## Upstream Baseline
+
+RMK is pinned to upstream commit `80c0bda72fee2fc75e1d27d08012435e71983247`
+(2026-10-22). See `docs/UPSTREAM-UPGRADE.md` for the migration and first-flash notes.
+The project builds directly from that upstream revision; no sibling RMK checkout is required.
+
 ## Build & Flash Commands
 
 ```bash
 # Build (release, size-optimized)
-cargo build --release
+cargo build --release --locked
 
 # Build + flash via debug probe (overwrites bootloader)
 cargo run --release
@@ -40,17 +46,17 @@ nrfjprog --recover
 - `src/led/startup_animation.rs` — Boot animation sequence
 - `src/vial.rs` — Auto-generated at build time from `vial.json` by `build.rs`
 
-### RMK Controller Pattern
+### RMK Processor Pattern
 
-Controllers subscribe to events using the `#[controller(subscribe = [...])]` macro. This generates event routing boilerplate. Handler methods must follow the naming convention:
+Processors subscribe to events using the `#[processor(subscribe = [...])]` macro. This generates event routing boilerplate. Handler methods must follow the naming convention:
 
 ```
 EventTypeName → on_{snake_case}_event()
 ```
 
-Example: `BleStateChangeEvent` → `on_ble_state_change_event()`. See `docs/RMK-Controller-Changes-7Feb2026.md` for full API reference.
+Example: `ConnectionStatusChangeEvent` → `on_connection_status_change_event()`.
 
-The `PollingController` trait provides a periodic `update()` callback (e.g., 700ms for LED blinking).
+The processor macro's `poll_interval` runs the processor's `poll()` method periodically (1400ms for the status LED).
 
 ### Concurrency Model
 
@@ -59,13 +65,17 @@ All tasks run concurrently via Embassy async on a single-threaded executor. `run
 run_all!(
     matrix, encoder, adc_device, storage,
     usb_transport, ble_transport, wpm_processor,
-    batt_proc, keyboard, host_service, status_led,
+    batt_proc, keyboard, watchdog_runner, status_led,
 )
 ```
 
 ### BLE Stack
 
-Uses Nordic's Softdevice Controller (`nrf-sdc`) + Multiprotocol Service Layer (`nrf-mpsl`) — not the legacy SoftDevice. The BLE stack is built via `rmk::ble::build_ble_stack()`. Supports 3 BLE profiles with bond storage.
+Uses Nordic's Softdevice Controller (`nrf-sdc`) + Multiprotocol Service Layer (`nrf-mpsl`). `BleTransport::new(sdc, ble_addr(), rmk_config)` owns the BLE stack. USB and BLE attach to a shared `HostService` with `.with_host_service(&host_service)`; the service is no longer passed to `run_all!`. Supports 3 BLE profiles with bond storage.
+
+`UsbTransport::builder(...).build()` provides the extra descriptor space needed for the Vial interface. Keep this builder path when updating the USB setup.
+
+Battery ADC readings use millivolts with Embassy's default SAADC settings and a 1000:1400 divider. No charging-state GPIO is configured on this board.
 
 ### Memory Layout (`memory.x`)
 
@@ -73,12 +83,14 @@ With Adafruit bootloader (current): Flash starts at `0x1000`, RAM at `0x20000008
 Without bootloader: Flash at `0x0`, RAM at `0x20000000`.
 Storage region: `0xA0000`, 12 sectors × 4KB = 48KB for keymap/bonds/macros.
 
-## Key Dependencies (pinned to git revisions)
+## Key Dependencies
 
-- **RMK** — `rev bf9922b`, features: `async_matrix`, `nrf52840_ble`, `adafruit_bl`
-- **nrf-sdc / nrf-mpsl** — `rev ffe59a7a` from `haobogu/nrf-sdc`
-- **embassy-nrf** `0.10`, **embassy-executor** `0.10` (feature `platform-cortex-m`)
+- **RMK** — `rev 80c0bda72fee2fc75e1d27d08012435e71983247` from `rmk-rs/rmk`, features: `async_matrix`, `nrf52840_ble`, `adafruit_bl`, plus upstream defaults
+- **nrf-sdc / nrf-mpsl** — `0.4.0` from crates.io; nrf-sdc includes `central` and `peripheral`
+- **embassy-nrf** `0.11`, **embassy-executor** `0.10` (feature `platform-cortex-m`), **bt-hci** `0.10`
 - **ws2812-spi** — Custom fork `aziddy/ws2812-spi-rs`, branch `nrf52840_at4Mhz_support` (4MHz SPI bit patterns)
+
+Macros use `rmk::types::keyboard_macros::MacroOp` tables and `rmk::text!`; `BehaviorConfig::keyboard_macros` holds the static table directly.
 
 ## Hardware Reference
 

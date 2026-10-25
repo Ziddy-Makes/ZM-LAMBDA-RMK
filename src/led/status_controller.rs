@@ -175,10 +175,7 @@ impl<'d, const N: usize> StatusLedController<'d, N> {
                 // Don't override USB-active suppression: only blink when BLE is the
                 // intended path (no USB active).
                 if !matches!(active, Some(ConnectionType::Usb)) {
-                    info!(
-                        "Advertising - profile: {}",
-                        status.ble.profile
-                    );
+                    info!("Advertising - profile: {}", status.ble.profile);
                     self.should_blink = true;
                 }
             }
@@ -236,7 +233,10 @@ impl<'d, const N: usize> StatusLedController<'d, N> {
     async fn on_action_event(&mut self, event: ActionEvent) {
         // Check if it's User7 action (BAT_CHK in Vial)
         if let Action::User(7) = event.action {
-            if !self.user7_held {
+            if self.user7_held == event.keyboard_event.pressed {
+                return;
+            }
+            if event.keyboard_event.pressed {
                 info!("User7 (BAT_CHK) pressed - showing battery level");
                 self.user7_held = true;
                 self.is_showing_battery = true;

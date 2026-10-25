@@ -24,22 +24,21 @@ use led::{StartupAnimator, StatusLedController};
 use nrf_mpsl::Flash;
 use nrf_sdc::mpsl::MultiprotocolServiceLayer;
 use nrf_sdc::{self as sdc, mpsl};
-use rand_chacha::ChaCha12Rng;
-use rand_core::SeedableRng;
-use rmk::ble::{BleTransport, build_ble_stack};
+use rmk::ble::BleTransport;
 use rmk::config::{
     BehaviorConfig, BleBatteryConfig, DeviceConfig, PositionalConfig, RmkConfig, StorageConfig,
     VialConfig,
 };
 use rmk::debounce::default_debouncer::DefaultDebouncer;
-use rmk::host::{HostService, KeyboardContext};
+use rmk::host::HostService;
 use rmk::input_device::adc::{AnalogEventType, NrfAdc};
 use rmk::input_device::battery::BatteryProcessor;
 use rmk::input_device::rotary_encoder::{DefaultPhase, RotaryEncoder};
 use rmk::keyboard::Keyboard;
 use rmk::processor::builtin::wpm::WpmProcessor;
 use rmk::usb::UsbTransport;
-use rmk::{HostResources, KeymapData, initialize_keymap_and_storage, run_all};
+use rmk::watchdog::Nrf52Watchdog;
+use rmk::{KeymapData, initialize_keymap_and_storage, run_all};
 use static_cell::StaticCell;
 use vial::{VIAL_KEYBOARD_DEF, VIAL_KEYBOARD_ID};
 use ws2812_spi::Ws2812;
@@ -125,7 +124,7 @@ async fn main(spawner: Spawner) {
         source: mpsl::raw::MPSL_CLOCK_LF_SRC_RC as u8,
         rc_ctiv: mpsl::raw::MPSL_RECOMMENDED_RC_CTIV as u8,
         rc_temp_ctiv: mpsl::raw::MPSL_RECOMMENDED_RC_TEMP_CTIV as u8,
-        accuracy_ppm: mpsl::raw::MPSL_DEFAULT_CLOCK_ACCURACY_PPM as u16,
+        accuracy_ppm: 500,
         skip_wait_lfclk_started: mpsl::raw::MPSL_DEFAULT_SKIP_WAIT_LFCLK_STARTED != 0,
     };
     static MPSL: StaticCell<MultiprotocolServiceLayer> = StaticCell::new();
@@ -136,17 +135,14 @@ async fn main(spawner: Spawner) {
         lfclk_cfg,
         SESSION_MEM.init(mpsl::SessionMem::new())
     )));
-    spawner.spawn(unwrap!(mpsl_task(&*mpsl)));
+    spawner.spawn(mpsl_task(&*mpsl).unwrap());
     let sdc_p = sdc::Peripherals::new(
         p.PPI_CH17, p.PPI_CH18, p.PPI_CH20, p.PPI_CH21, p.PPI_CH22, p.PPI_CH23, p.PPI_CH24,
         p.PPI_CH25, p.PPI_CH26, p.PPI_CH27, p.PPI_CH28, p.PPI_CH29,
     );
     let mut rng = rng::Rng::new(p.RNG, Irqs);
-    let mut rng_gen = ChaCha12Rng::from_rng(&mut rng).unwrap();
-    let mut sdc_mem = sdc::Mem::<4096>::new();
+    let mut sdc_mem = sdc::Mem::<4696>::new();
     let sdc = unwrap!(build_sdc(sdc_p, &mut rng, mpsl, &mut sdc_mem));
-    let mut host_resources = HostResources::new();
-    let stack = build_ble_stack(sdc, ble_addr(), &mut rng_gen, &mut host_resources).await;
 
     // Initialize usb driver
     let driver = Driver::new(p.USBD, Irqs, HardwareVbusDetect::new(Irqs));
@@ -157,7 +153,6 @@ async fn main(spawner: Spawner) {
     // Initialize the ADC.
     // We are only using one channel for detecting battery level
     let adc_pin = p.P0_02.degrade_saadc();
-    // let is_charging_pin = Input::new(p.P1_09, embassy_nrf::gpio::Pull::Up);
     let saadc = init_adc(adc_pin, p.SAADC);
     // Wait for ADC calibration.
     saadc.calibrate().await;
@@ -168,14 +163,13 @@ async fn main(spawner: Spawner) {
         pid: 0x364c,
         manufacturer: "Ziddy Makes",
         product_name: "ZM-LAMBDA-RMK-C",
-        serial_number: "vial:f64c2b3c:000001",
+        ..DeviceConfig::default()
     };
     let vial_config = VialConfig::new(VIAL_KEYBOARD_ID, VIAL_KEYBOARD_DEF, UNLOCK_KEYS);
-    // let ble_battery_config = BleBatteryConfig::new(Some(is_charging_pin), true, None, false);
-    let ble_battery_config = BleBatteryConfig::new(None, true, None, false);
+    let ble_battery_config = BleBatteryConfig::default();
     let storage_config = StorageConfig {
         start_addr: 0xA0000, // FIXME: use 0x70000 after we can build without softdevice controller
-        num_sectors: 12,     // Sectors are 4KB each on nRF52840 -- 24 sectors = 96KB
+        num_sectors: 12,     // 12 sectors × 4KB = 48KB on nRF52840
         clear_storage: false,
         clear_layout: false,
     };
@@ -236,7 +230,7 @@ async fn main(spawner: Spawner) {
     let mut matrix =
         ::rmk::matrix::Matrix::<_, _, _, ROW, COL, true>::new(input_pins, output_pins, debouncer);
     let mut keyboard = Keyboard::new(&keymap);
-    let host_ctx = KeyboardContext::new(&keymap);
+    let host_service = HostService::new(&keymap, &rmk_config);
 
     // Initialize the encoder
     // Encoder Pin A: P0_08, Pin B: P0_06
@@ -247,6 +241,7 @@ async fn main(spawner: Spawner) {
     let mut adc_device = NrfAdc::new(
         saadc,
         [AnalogEventType::Battery],
+        [0],
         embassy_time::Duration::from_secs(12),
         None,
     );
@@ -271,10 +266,13 @@ async fn main(spawner: Spawner) {
     let mut status_led: StatusLedController<'_, NUM_LEDS> =
         StatusLedController::<NUM_LEDS>::new(ws2812, mosfet_sk_pwr_ctrl);
 
-    let mut usb_transport = UsbTransport::new(driver, rmk_config.device_config);
-    let mut host_service = HostService::new(&host_ctx, &rmk_config);
-    let mut ble_transport = BleTransport::new(&stack, rmk_config).await;
+    let mut usb_transport = UsbTransport::builder(driver, rmk_config.device_config.clone())
+        .build()
+        .with_host_service(&host_service);
+    let mut ble_transport =
+        BleTransport::new(sdc, ble_addr(), rmk_config).with_host_service(&host_service);
     let mut wpm_processor = WpmProcessor::new();
+    let mut watchdog_runner = Nrf52Watchdog::default_runner(p.WDT);
 
     run_all!(
         matrix,
@@ -286,7 +284,7 @@ async fn main(spawner: Spawner) {
         wpm_processor,
         batt_proc,
         keyboard,
-        host_service,
+        watchdog_runner,
         status_led
     )
     .await;
