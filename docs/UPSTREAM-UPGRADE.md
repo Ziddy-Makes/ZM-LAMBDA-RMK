@@ -5,6 +5,9 @@ the existing application from upstream `bf9922b6287ad14e4ce661e3f0794fc1c2c1ffb1
 to `80c0bda72fee2fc75e1d27d08012435e71983247` (22 October 2026), including the
 changes after the v0.9.0 release.
 
+See [features and improvements since the previous revision](RMK-FEATURES-SINCE-bf9922b.md)
+for a summary of the upstream additions included in this upgrade.
+
 ## Integration changes
 
 - Pin RMK directly to `rmk-rs/rmk` and remove the sibling `rmk-zm-patch` dependency.
